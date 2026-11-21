@@ -29,3 +29,25 @@ class EntryPayload(BaseModel):
 class ActionPayload(BaseModel):
     action: str
     remark: str | None = None
+
+
+class FieldDeclaration(BaseModel):
+    """一条列声明；来源可省略，省略时使用批次的提交来源。"""
+
+    name: str
+    type: str = ""
+    source: str | None = None
+    meaning: str = ""
+    enum_values: str = ""
+    sample: str = ""
+    sampling: str = ""
+    note: str = ""
+
+
+class FieldDiscoveryPayload(BaseModel):
+    asset_code: str
+    declarations: list[FieldDeclaration] = Field(default_factory=list)
+    source: str = "batch_import"
+    batch_id: str | None = None
+    submitted_by: str = "system"
+    observed_at: str | None = None

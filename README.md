@@ -73,6 +73,49 @@ npm run dev
 | 差异报告 | `diff_report` | 差异记录 | 记录编号、比较对象、比较维度 |
 | 负责人管理 | `owner_mgr` | 责任人 | 指派编号、目标资产、负责角色 |
 
+## 字段发现与资产字典
+
+资产注册和外部加载器都通过同一条字段发现链路写入资产字典
+（`metadata_index`）。一次提交的多条列定义形成一个**字段发现批次**
+（`field_discovery_batch`），批次下挂：
+
+- `field_discovery_detail`：每个「来源 + 字段」一条发现明细；
+- `field_discovery_evidence`：每个「资产 + 来源 + 字段」唯一一条采集依据。
+
+规则：
+
+- 同一批次内重复的列只收一条，计入 `批内重复条数`；
+- 同一来源重复导入同一列只更新采集依据（命中次数 +1），不新增列；
+- 同一字段来自不同来源的声明逐条比对：类型兼容时合并发布（整数/数值、
+  日期/时间戳允许加宽）；不兼容时字典保留既有发布类型、标记
+  `类型冲突`，双方声明的类型和依据编号都留在 `冲突声明` 与各自明细里；
+- 批次、明细、字典三者可用 `catalog-check` 逐字段核对编目清单。
+
+接口：
+
+```text
+POST /api/metadata_index/discovery        提交批次（可复用 batch_id 续传）
+GET  /api/metadata_index/discovery        批次清单（?asset_code=）
+GET  /api/metadata_index/discovery/{no}   批次明细 + 依据 + 字典 + 核对结果
+GET  /api/metadata_index/dictionary/{资产}  资产字典（含类型冲突与采集依据）
+GET  /api/metadata_index/dictionary/{资产}/catalog-check  编目与发现逐字段核对
+```
+
+请求示例：
+
+```json
+{
+  "asset_code": "demo.orders",
+  "source": "loader_b",
+  "batch_id": "FDISC-0001",
+  "declarations": [
+    {"name": "sku", "type": "整数", "sampling": "jdbc_metadata"},
+    {"name": "net", "type": "数值"},
+    {"name": "tax", "type": "数值"}
+  ]
+}
+```
+
 ## 约定
 
 - 全部模块共享`frontend/src/views/WorkbenchView.vue|tsx`和一套资源路由。

@@ -4,7 +4,6 @@ Pipeline 1: Asset registration → metadata discovery → indexing
 """
 from __future__ import annotations
 
-import time as _time
 from typing import Any
 
 from app.services.base import BaseModuleService
@@ -30,7 +29,7 @@ class AssetRegistryService(BaseModuleService):
         # 自动审核注册
         self.run_action(entry["id"], "审核注册")
 
-        # 触发元数据发现：为资产自动创建元数据条目
+        # 触发元数据发现：列定义统一走字段发现批次，保证去重和采集依据一致
         schema_fields = [
             ("资产编号", "string", "资产唯一标识"),
             ("资产名称", "string", "资产业务名称"),
@@ -38,26 +37,21 @@ class AssetRegistryService(BaseModuleService):
             ("存储位置", "string", "物理存储路径"),
             ("保密等级", "string", "安全保密等级"),
         ]
-        meta_entries = []
-        for idx, (field_name, field_type, biz_meaning) in enumerate(schema_fields):
-            meta_value = entry.get(field_name, "")
-            meta = {
-                "id": store.next_id("metadata_index"),
-                "条目编号": f"META-{entry['资产编号']}-{idx+1:02d}",
-                "所属资产": entry["资产编号"],
-                "字段名称": field_name,
-                "字段类型": field_type,
-                "业务含义": biz_meaning,
-                "枚举值": "",
-                "样例数据": str(meta_value),
-                "最后解析": _time.strftime("%Y-%m-%d %H:%M:%S"),
-                "status": "已索引",
-                "pending": False,
-                "abnormal": False,
-                "created_at": _time.strftime("%Y-%m-%d %H:%M:%S"),
+        declarations = [
+            {
+                "name": field_name,
+                "type": field_type,
+                "meaning": biz_meaning,
+                "sample": str(entry.get(field_name, "")),
+                "source": self.MODULE,
             }
-            store.rows("metadata_index").append(meta)
-            meta_entries.append(meta["条目编号"])
+            for field_name, field_type, biz_meaning in schema_fields
+        ]
+        discovery = self._metadata_service().discover_batch(
+            entry["资产编号"], declarations, source=self.MODULE,
+            submitted_by=str(entry.get("负责人", "") or "system"),
+        )
+        meta_entries = [meta["条目编号"] for meta in discovery["entries"]]
 
         # 记录变更日志
         store.log_change(
@@ -77,8 +71,19 @@ class AssetRegistryService(BaseModuleService):
             "ok": True,
             "asset": entry,
             "metadata_entries": meta_entries,
+            "field_discovery": {
+                "batch": discovery["batch"],
+                "summary": discovery["summary"],
+            },
             "pipeline": "asset_registry->metadata_index",
         }
+
+    @staticmethod
+    def _metadata_service():
+        """延迟导入，避免服务注册表初始化时的循环引用。"""
+        from app.services.metadata_index import MetadataIndexService
+
+        return MetadataIndexService()
 
     def get_asset_metadata(self, asset_id: int) -> list[dict[str, Any]]:
         """查询资产关联的元数据条目。"""

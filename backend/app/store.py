@@ -13,6 +13,14 @@ from typing import Any
 
 from app.seed import SEED_ROWS
 
+# 字段发现批次、明细和采集依据是资产字典的内部账本，不作为独立业务模块
+# 出现在运营概览里，但仍可通过元数据索引接口回查。
+INTERNAL_TABLES: frozenset[str] = frozenset({
+    "field_discovery_batch",
+    "field_discovery_detail",
+    "field_discovery_evidence",
+})
+
 
 class Store:
     """增强版存储层，支持跨模块读写、变更日志和快照。"""
@@ -36,6 +44,10 @@ class Store:
 
     def module_names(self) -> list[str]:
         return sorted(self._tables)
+
+    def public_module_names(self) -> list[str]:
+        """对外展示的业务模块，不含字段发现的内部账本表。"""
+        return sorted(name for name in self._tables if name not in INTERNAL_TABLES)
 
     def rows(self, module: str) -> list[dict[str, Any]]:
         return self._tables.setdefault(module, [])
@@ -311,7 +323,7 @@ class Store:
 
     def overview(self) -> dict[str, object]:
         modules: list[dict[str, object]] = []
-        for name in self.module_names():
+        for name in self.public_module_names():
             rows = self.rows(name)
             modules.append({
                 "name": name,
